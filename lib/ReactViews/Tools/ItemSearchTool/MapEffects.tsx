@@ -1,6 +1,6 @@
 import React, { useEffect } from "react";
 import SearchableItemMixin from "../../../ModelMixins/SearchableItemMixin";
-import { ItemSearchResult } from "../../../Models/ItemSearchProvider";
+import { ItemSearchResult } from "../../../Models/ItemSearchProviders/ItemSearchProvider";
 
 export type MapEffect =
   | { is: "none" }
@@ -70,12 +70,5 @@ function zoomToResult(
   item: SearchableItemMixin.Instance,
   result: ItemSearchResult
 ): void {
-  if (item.zoomToItemSearchResult) {
-    item.zoomToItemSearchResult(result);
-  } else {
-    item.terria.currentViewer.zoomTo(
-      result.zoomToTarget as any,
-      undefined as any
-    );
-  }
+  item.zoomToItemSearchResult(result);
 }

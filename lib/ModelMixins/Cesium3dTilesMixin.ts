@@ -29,16 +29,19 @@ import isDefined from "../Core/isDefined";
 import { isJsonObject, JsonObject } from "../Core/Json";
 import makeRealPromise from "../Core/makeRealPromise";
 import runLater from "../Core/runLater";
-import CommonStrata from "../Models/CommonStrata";
-import createStratumInstance from "../Models/createStratumInstance";
+import TerriaError from "../Core/TerriaError";
+import proxyCatalogItemUrl from "../Models/Catalog/proxyCatalogItemUrl";
+import CommonStrata from "../Models/Definition/CommonStrata";
+import createStratumInstance from "../Models/Definition/createStratumInstance";
+import Model from "../Models/Definition/Model";
 import Feature from "../Models/Feature";
-import Model from "../Models/Model";
-import proxyCatalogItemUrl from "../Models/proxyCatalogItemUrl";
-import Cesium3DTilesCatalogItemTraits from "../Traits/Cesium3DCatalogItemTraits";
+import { SelectableDimension } from "../Models/SelectableDimensions";
+import Cesium3DTilesCatalogItemTraits from "../Traits/TraitsClasses/Cesium3DTilesCatalogItemTraits";
 import Cesium3dTilesTraits, {
   OptionsTraits
-} from "../Traits/Cesium3dTilesTraits";
-import AsyncMappableMixin from "./AsyncMappableMixin";
+} from "../Traits/TraitsClasses/Cesium3dTilesTraits";
+import CatalogMemberMixin, { getName } from "./CatalogMemberMixin";
+import MappableMixin from "./MappableMixin";
 import ShadowMixin from "./ShadowMixin";
 
 const DEFAULT_HIGHLIGHT_COLOR = "#ff3f00";
@@ -67,52 +70,43 @@ export default function Cesium3dTilesMixin<
   T extends Constructor<Model<Cesium3dTilesTraits>>
 >(Base: T) {
   abstract class Cesium3dTilesMixin extends ShadowMixin(
-    AsyncMappableMixin(Base)
+    MappableMixin(CatalogMemberMixin(Base))
   ) {
-    readonly canZoomTo = true;
-
     protected tileset?: ObservableCesium3DTileset;
 
     // Just a variable to save the original tileset.root.transform if it exists
     @observable
     private originalRootTransform: Matrix4 = Matrix4.IDENTITY.clone();
 
-    get isMappable() {
-      return true;
-    }
-
-    protected forceLoadMetadata() {
-      return Promise.resolve();
-    }
-
-    protected forceLoadMapItems() {
-      this.loadTileset();
-      if (this.tileset) {
-        return makeRealPromise<Cesium3DTileset>(this.tileset.readyPromise)
-          .then(tileset => {
-            if (
-              tileset.extras !== undefined &&
-              tileset.extras.style !== undefined
-            ) {
-              runInAction(() => {
-                this.strata.set(
-                  CommonStrata.defaults,
-                  createStratumInstance(Cesium3DTilesCatalogItemTraits, {
-                    style: tileset.extras.style
-                  })
-                );
-              });
-            }
-          }) // TODO: What should handle this error?
-          .catch(e => console.error(e));
-      } else {
-        return Promise.resolve();
+    protected async forceLoadMapItems() {
+      try {
+        this.loadTileset();
+        if (this.tileset) {
+          const tileset = await makeRealPromise<Cesium3DTileset>(
+            this.tileset.readyPromise
+          );
+          if (
+            tileset.extras !== undefined &&
+            tileset.extras.style !== undefined
+          ) {
+            runInAction(() => {
+              this.strata.set(
+                CommonStrata.defaults,
+                createStratumInstance(Cesium3DTilesCatalogItemTraits, {
+                  style: tileset.extras.style
+                })
+              );
+            });
+          }
+        }
+      } catch (e) {
+        throw TerriaError.from(e, "Failed to load 3d-tiles tileset");
       }
     }
 
     private loadTileset() {
       if (!isDefined(this.url) && !isDefined(this.ionAssetId)) {
-        return;
+        throw `\`url\` and \`ionAssetId\` are not defined for ${getName(this)}`;
       }
 
       let resource = undefined;
@@ -218,7 +212,7 @@ export default function Cesium3dTilesMixin<
       }
 
       if (this.tileset.destroyed) {
-        this.loadTileset();
+        this.loadMapItems(true);
       }
 
       this.tileset.style = toJS(this.cesiumTileStyle);
@@ -251,6 +245,10 @@ export default function Cesium3dTilesMixin<
 
       this.tileset.modelMatrix = this.modelMatrix;
       return [this.tileset];
+    }
+
+    @computed get selectableDimensions(): SelectableDimension[] {
+      return [...super.selectableDimensions, this.shadowDimension];
     }
 
     @computed
@@ -332,7 +330,7 @@ export default function Cesium3dTilesMixin<
         return [min, max].filter(x => x.length > 0).join(" && ");
       });
 
-      const showExpression = terms.join("&&");
+      const showExpression = terms.filter(x => x.length > 0).join("&&");
       if (showExpression.length > 0) {
         return showExpression;
       }

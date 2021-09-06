@@ -2,13 +2,13 @@ import { action, computed } from "mobx";
 import Constructor from "../Core/Constructor";
 import ItemSearchProvider, {
   ItemSearchResult
-} from "../Models/ItemSearchProvider";
-import { ItemSearchProviders } from "../Models/ItemSearchProviders";
-import Model from "../Models/Model";
-import SearchableItemTraits from "../Traits/SearchableItemTraits";
-import ShowableTraits from "../Traits/ShowableTraits";
+} from "../Models/ItemSearchProviders/ItemSearchProvider";
+import { ItemSearchProviders } from "../Models/ItemSearchProviders/ItemSearchProviders";
+import Model from "../Models/Definition/Model";
+import MappableTraits from "../Traits/TraitsClasses/MappableTraits";
+import SearchableItemTraits from "../Traits/TraitsClasses/SearchableItemTraits";
 
-type MixinModel = Model<SearchableItemTraits & ShowableTraits>;
+type MixinModel = Model<SearchableItemTraits & MappableTraits>;
 
 export type ItemSelectionDisposer = () => void;
 
@@ -39,11 +39,10 @@ function SearchableItemMixin<T extends Constructor<MixinModel>>(Base: T) {
     ): ItemSelectionDisposer;
 
     /**
-     * An optional implementation for zooming in to results.
+     * A method implementing zoom to behavior for results.
      *
-     * @param result The search result to zoom to.
      */
-    zoomToItemSearchResult?: (result: ItemSearchResult) => void;
+    abstract zoomToItemSearchResult(result: ItemSearchResult): void;
 
     /**
      * Returns true if this item is searchable and has a valid item search provider defined.

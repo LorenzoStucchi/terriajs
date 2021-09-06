@@ -1,16 +1,17 @@
 import i18next from "i18next";
 import { action, computed, observable } from "mobx";
 import filterOutUndefined from "../Core/filterOutUndefined";
-import TerriaError from "../Core/TerriaError";
+import TerriaError, { TerriaErrorSeverity } from "../Core/TerriaError";
+import CatalogMemberMixin, { getName } from "../ModelMixins/CatalogMemberMixin";
+import ChartableMixin from "../ModelMixins/ChartableMixin";
 import GroupMixin from "../ModelMixins/GroupMixin";
+import MappableMixin from "../ModelMixins/MappableMixin";
 import ReferenceMixin from "../ModelMixins/ReferenceMixin";
 import TimeFilterMixin from "../ModelMixins/TimeFilterMixin";
-import CommonStrata from "../Models/CommonStrata";
-import LayerOrderingTraits from "../Traits/LayerOrderingTraits";
-import Chartable from "./Chartable";
-import hasTraits from "./hasTraits";
-import Mappable from "./Mappable";
-import { BaseModel } from "./Model";
+import CommonStrata from "./Definition/CommonStrata";
+import LayerOrderingTraits from "../Traits/TraitsClasses/LayerOrderingTraits";
+import hasTraits from "./Definition/hasTraits";
+import { BaseModel } from "./Definition/Model";
 
 const keepOnTop = (model: BaseModel) =>
   hasTraits(model, LayerOrderingTraits, "keepOnTop") && model.keepOnTop;
@@ -161,9 +162,8 @@ export default class Workbench {
   /**
    * Adds or removes a model to/from the workbench. If the model is a reference,
    * it will also be dereferenced. If, after dereferencing, the item turns out not to
-   * be {@link Mappable} or {@link Chartable} but it is a {@link GroupMixin}, it will
+   * be {@link AsyncMappableMixin} or {@link ChartableMixin} but it is a {@link GroupMixin}, it will
    * be removed from the workbench. If it is mappable, `loadMapItems` will be called.
-   * If it is chartable, `loadChartItems` will be called.
    *
    * @param item The item to add to or remove from the workbench.
    */
@@ -176,37 +176,38 @@ export default class Workbench {
     this.insertItem(item);
 
     try {
-      if (ReferenceMixin.is(item)) {
-        await item.loadReference();
+      if (ReferenceMixin.isMixedInto(item)) {
+        (await item.loadReference()).throwIfError();
 
         const target = item.target;
         if (
-          target &&
-          GroupMixin.isMixedInto(target) &&
-          !Mappable.is(target) &&
-          !Chartable.is(target)
+          !target ||
+          (target &&
+            !MappableMixin.isMixedInto(target) &&
+            !ChartableMixin.isMixedInto(target))
         ) {
           this.remove(item);
+          throw `${getName(
+            item
+          )} cannot be added to the workbench - as there is nothing to visualize`;
         } else if (target) {
           return this.add(target);
         }
       }
 
-      if (Mappable.is(item)) {
-        await item.loadMapItems();
-      }
+      if (CatalogMemberMixin.isMixedInto(item))
+        (await item.loadMetadata()).throwIfError();
 
-      if (Chartable.is(item)) {
-        await item.loadChartItems();
+      if (MappableMixin.isMixedInto(item)) {
+        (await item.loadMapItems()).throwIfError();
       }
     } catch (e) {
       this.remove(item);
-      throw e instanceof TerriaError
-        ? e
-        : new TerriaError({
-            title: i18next.t("workbench.addItemErrorTitle"),
-            message: i18next.t("workbench.addItemErrorMessage")
-          });
+      throw TerriaError.from(e, {
+        title: i18next.t("workbench.addItemErrorTitle"),
+        message: i18next.t("workbench.addItemErrorMessage"),
+        severity: TerriaErrorSeverity.Error
+      });
     }
   }
 
@@ -247,7 +248,7 @@ export default class Workbench {
 }
 
 function dereferenceModel(model: BaseModel): BaseModel {
-  if (ReferenceMixin.is(model) && model.target !== undefined) {
+  if (ReferenceMixin.isMixedInto(model) && model.target !== undefined) {
     return model.target;
   }
   return model;

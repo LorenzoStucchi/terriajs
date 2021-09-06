@@ -1,7 +1,6 @@
 "use strict";
 import i18next from "i18next";
 import { action, observable } from "mobx";
-import { observer } from "mobx-react";
 import React from "react";
 import Cartesian3 from "terriajs-cesium/Source/Core/Cartesian3";
 import Ellipsoid from "terriajs-cesium/Source/Core/Ellipsoid";
@@ -12,29 +11,34 @@ import VertexFormat from "terriajs-cesium/Source/Core/VertexFormat";
 import CustomDataSource from "terriajs-cesium/Source/DataSources/CustomDataSource";
 import Terria from "../../../../Models/Terria";
 import UserDrawing from "../../../../Models/UserDrawing";
+import ViewerMode from "../../../../Models/ViewerMode";
+import { GLYPHS } from "../../../../Styled/Icon";
+import MapNavigationItemController from "../../../../ViewModels/MapNavigation/MapNavigationItemController";
 
 const EllipsoidTangentPlane = require("terriajs-cesium/Source/Core/EllipsoidTangentPlane");
 const PolygonGeometryLibrary = require("terriajs-cesium/Source/Core/PolygonGeometryLibrary");
 
 interface PropTypes {
   terria: Terria;
+
   onClose(): void;
 }
 
-export default class MeasureTool {
+export default class MeasureTool extends MapNavigationItemController {
+  static id = "measure-tool";
+  static displayName = "MeasureTool";
   readonly terria: Terria;
   @observable
   totalDistanceMetres: number = 0;
-
   @observable
   totalAreaMetresSquared: number = 0;
-
   @observable
   userDrawing: UserDrawing;
-
-  static displayName = "MeasureTool";
   onClose: () => void;
+  itemRef: React.RefObject<HTMLDivElement> = React.createRef();
+
   constructor(props: PropTypes) {
+    super();
     const t = i18next.t.bind(i18next);
     this.terria = props.terria;
     this.userDrawing = new UserDrawing({
@@ -47,6 +51,14 @@ export default class MeasureTool {
       onMakeDialogMessage: this.onMakeDialogMessage
     });
     this.onClose = props.onClose;
+  }
+
+  get glyph(): any {
+    return GLYPHS.measure;
+  }
+
+  get viewerMode(): ViewerMode | undefined {
+    return undefined;
   }
 
   prettifyNumber(number: number, squared: boolean) {
@@ -68,8 +80,8 @@ export default class MeasureTool {
     }
     let numberStr = number.toFixed(2);
     // http://stackoverflow.com/questions/2901102/how-to-print-a-number-with-commas-as-thousands-separators-in-javascript
-    numberStr = number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    numberStr = number + " " + label;
+    numberStr.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    numberStr = `${numberStr} ${label}`;
     if (squared) {
       numberStr += "\u00B2";
     }
@@ -205,6 +217,7 @@ export default class MeasureTool {
   onCleanUp() {
     this.totalDistanceMetres = 0;
     this.totalAreaMetresSquared = 0;
+    super.deactivate();
   }
 
   @action.bound
@@ -229,8 +242,19 @@ export default class MeasureTool {
     return message;
   };
 
-  @action.bound
-  handleClick() {
+  /**
+   * @overrides
+   */
+  deactivate() {
+    this.userDrawing.endDrawing();
+    super.deactivate();
+  }
+
+  /**
+   * @overrides
+   */
+  activate() {
     this.userDrawing.enterDrawMode();
+    super.activate();
   }
 }

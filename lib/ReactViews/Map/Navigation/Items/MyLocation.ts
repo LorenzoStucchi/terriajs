@@ -1,31 +1,33 @@
-import i18next, { TFunction } from "i18next";
+import i18next from "i18next";
 import { action, observable, runInAction } from "mobx";
 import React from "react";
-import { withTranslation, WithTranslation } from "react-i18next";
-import { DefaultTheme, withTheme } from "styled-components";
+import CesiumCartographic from "terriajs-cesium/Source/Core/Cartographic";
 import createGuid from "terriajs-cesium/Source/Core/createGuid";
 import Rectangle from "terriajs-cesium/Source/Core/Rectangle";
 import isDefined from "../../../../Core/isDefined";
 import TerriaError from "../../../../Core/TerriaError";
-import CommonStrata from "../../../../Models/CommonStrata";
-import Icon from "../../../Icon";
-import MapIconButton from "../../../MapIconButton/MapIconButton";
-import GeoJsonCatalogItem from "../../../../Models/GeoJsonCatalogItem";
+import GeoJsonCatalogItem from "../../../../Models/Catalog/CatalogItems/GeoJsonCatalogItem";
+import CommonStrata from "../../../../Models/Definition/CommonStrata";
 import Terria from "../../../../Models/Terria";
-const Tween = require("terriajs-cesium/Source/ThirdParty/Tween").default;
-const Box = require("../../../../Styled/Box").default;
+import ViewerMode from "../../../../Models/ViewerMode";
+import { GLYPHS } from "../../../../Styled/Icon";
+import MapNavigationItemController from "../../../../ViewModels/MapNavigation/MapNavigationItemController";
 
 interface PropTypes {
   terria: Terria;
 }
 
-class MyLocation {
+class MyLocation extends MapNavigationItemController {
+  static id = "my-location";
   static displayName = "MyLocation";
-  private _marker: GeoJsonCatalogItem;
+  readonly terria: Terria;
+  itemRef: React.RefObject<HTMLDivElement> = React.createRef();
+  private readonly _marker: GeoJsonCatalogItem;
   @observable private watchId: number | undefined;
   @observable private flown: boolean | undefined;
-  readonly terria: Terria;
+
   constructor(props: PropTypes) {
+    super();
     this.terria = props.terria;
     this._marker = new GeoJsonCatalogItem(createGuid(), props.terria);
     this.zoomToMyLocation = this.zoomToMyLocation.bind(this);
@@ -34,6 +36,14 @@ class MyLocation {
       this
     );
     this.followMeEnabled = this.followMeEnabled.bind(this);
+  }
+
+  get glyph(): any {
+    return GLYPHS.geolocationThick;
+  }
+
+  get viewerMode(): ViewerMode | undefined {
+    return undefined;
   }
 
   @action.bound
@@ -54,16 +64,14 @@ class MyLocation {
         );
       } else {
         // When Augmented Virtuality is enabled then we effectively toggle into watch mode and the position is repeatedly updated.
-        const watchId = navigator.geolocation.watchPosition(
+        this.watchId = navigator.geolocation.watchPosition(
           this.zoomToMyLocation,
           this.handleLocationError,
           options
         );
-
-        this.watchId = watchId;
       }
     } else {
-      this.terria.error.raiseEvent(
+      this.terria.raiseErrorToUser(
         new TerriaError({
           sender: this,
           title: t("location.errorGettingLocation"),
@@ -79,17 +87,17 @@ class MyLocation {
     const latitude = position.coords.latitude;
 
     if (this.augmentedVirtualityEnabled()) {
-      // Note: Specifiying the value of 27500m here enables this function to approximately mimic the behaviour of
-      //       the else case from the cameras inital view and when the viewer pan/zooms out to much.
+      // Note: Specifying the value of 27500m here enables this function to approximately mimic the behaviour of
+      //       the else case from the cameras initial view and when the viewer pan/zooms out to much.
       // We use the flag variable flown so that the user is flown to the current location when this function is
-      // first fired, but subsuquently the updates are jump location moves, since we assume that the movements are
+      // first fired, but subsequently the updates are jump location moves, since we assume that the movements are
       // small and flyTo performs badly when the increments are small (slow and unresponsive).
-      /* this.props.terria.augmentedVirtuality.moveTo(
+      this.terria.augmentedVirtuality.moveTo(
         CesiumCartographic.fromDegrees(longitude, latitude),
         27500,
         !isDefined(this.flown)
       );
-      this.flown = true; */
+      this.flown = true;
     } else {
       // west, south, east, north, result
       const rectangle = Rectangle.fromDegrees(
@@ -129,7 +137,6 @@ class MyLocation {
         "fill-opacity": undefined
       });
 
-      this._marker.loadMapItems();
       this.terria.workbench.add(this._marker);
     });
   }
@@ -144,7 +151,7 @@ class MyLocation {
       const secureUrl = uri.protocol("https").toString();
       message = t("location.originError", { secureUrl: secureUrl });
     }
-    this.terria.error.raiseEvent(
+    this.terria.raiseErrorToUser(
       new TerriaError({
         sender: this,
         title: t("location.errorGettingLocation"),
@@ -154,19 +161,14 @@ class MyLocation {
   }
 
   augmentedVirtualityEnabled() {
-    /* return (
-      isDefined(this.props.terria.augmentedVirtuality) &&
-      this.props.terria.augmentedVirtuality.enabled
-    ); */
-    return false;
+    return (
+      isDefined(this.terria.augmentedVirtuality) &&
+      this.terria.augmentedVirtuality.enabled
+    );
   }
 
   followMeEnabled() {
-    if (isDefined(this.watchId)) {
-      return true;
-    }
-
-    return false;
+    return !!isDefined(this.watchId);
   }
 
   @action.bound
